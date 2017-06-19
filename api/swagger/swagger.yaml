@@ -1,0 +1,404 @@
+swagger: "2.0"
+info:
+  version: "0.0.1"
+  title: Exit Animator Api
+# during dev, should point to your local machine
+host: localhost:8842
+# basePath prefixes all resource paths 
+basePath: /api
+# 
+schemes:
+  # tip: remove http to make production-grade
+  - http
+  - https
+# format of bodies a client can send (Content-Type)
+consumes:
+  - application/json
+# format of the responses to the client (Accepts)
+produces:
+  - application/json
+paths:
+  "/animation":
+    # binds a127 app logic to a route
+    x-swagger-router-controller: animation
+    get:
+      description: Lists all animation ids
+      operationId: getAnimations
+      responses:
+        "200":
+          description: Success
+          schema:
+            type: array
+            items:
+                $ref: "#/definitions/animation_id"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+    post:
+      description: "Add a new animation, an animation id will be assigned"
+      operationId: postAnimation
+      parameters:
+        - name: animation
+          in: body
+          description: The animation object (sans id)
+          required: true
+          schema:
+            $ref: "#/definitions/animation"
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/animation"
+        "400":
+          description: Illegal request
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        "500":
+          description: Internal error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+  "/animation/{animation_id}":
+    x-swagger-router-controller: animation
+    get:
+      description: Retrieve a specific keyframe by id
+      operationId: getAnimation
+      parameters:
+        - name: animation_id
+          in: path
+          description: The animation id
+          required: true
+          type: string
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/animation"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+    put:
+      description: Update a specific animation by id
+      operationId: putAnimation
+      parameters:
+        - name: animation_id
+          in: path
+          description: The animation id
+          required: true
+          type: string
+        - name: animation
+          in: body
+          description: The animation object
+          required: true
+          schema:
+            $ref: "#/definitions/animation"
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/animation"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+    delete:
+      description: Delete a specific animation by id
+      operationId: deleteAnimation
+      parameters:
+        - name: animation_id
+          in: path
+          description: The animation id
+          required: true
+          type: string
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/SuccessResponse"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+  "/animation/{animation_id}/clone":
+    x-swagger-router-controller: animation
+    post:
+      description: "Create a copy of specific animation, by id"
+      operationId: cloneAnimation
+      parameters:
+        - name: animation_id
+          in: path
+          description: The animation id
+          required: true
+          type: string
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/animation"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+  "/keyframe":
+    # binds a127 app logic to a route
+    x-swagger-router-controller: keyframe
+    get:
+      description: Lists all keyframe ids
+      operationId: getKeyframes
+      responses:
+        "200":
+          description: Success
+          schema:
+            type: array
+            items:
+                $ref: "#/definitions/keyframe_id"
+        "400":
+          description: Illegal request
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        "500":
+          description: Internal error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+    post:
+      description: "Add a new keyframe, a keyframe id will be assigned"
+      operationId: postKeyframe
+      parameters:
+        - name: keyframe
+          in: body
+          description: The keyframe object
+          required: true
+          schema:
+            $ref: "#/definitions/keyframe"
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/keyframe"
+        "400":
+          description: Illegal request
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        "500":
+          description: Internal error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+  "/keyframe/{keyframe_id}":
+    x-swagger-router-controller: keyframe
+    get:
+      description: Retrieve a specific keyframe by id
+      operationId: getKeyframe
+      parameters:
+        - name: keyframe_id
+          in: path
+          description: The keyframe id
+          required: true
+          type: string
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/keyframe"
+        "400":
+          description: Illegal request
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        "500":
+          description: Internal error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+    put:
+      description: Update a specific keyframe by id
+      operationId: putKeyframe
+      parameters:
+        - name: keyframe_id
+          in: path
+          description: The keyframe id
+          required: true
+          type: string
+        - name: keyframe
+          in: body
+          description: The keyframe object
+          required: true
+          schema:
+            $ref: "#/definitions/keyframe"
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/keyframe"
+        "400":
+          description: Illegal request
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        "500":
+          description: Internal error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+  "/keyframe/{keyframe_id}/clone":
+    x-swagger-router-controller: keyframe
+    post:
+      description: Create a copy of a specific keyframe by id
+      operationId: cloneKeyframe
+      parameters:
+        - name: keyframe_id
+          in: path
+          description: The keyframe id
+          required: true
+          type: string
+        - name: keyframe
+          in: body
+          description: The keyframe object
+          required: true
+          schema:
+            $ref: "#/definitions/keyframe"
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/keyframe"
+        "400":
+          description: Illegal request
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        "500":
+          description: Internal error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+  "/swagger":
+    x-swagger-pipe: swagger_raw
+# complex objects have schema definitions
+definitions:
+  ExitSkeletonNode:
+    type: object
+    properties:
+      name:
+        type: string
+        format: float
+      x:
+        type: number
+        format: float
+      y:
+        type: number
+        format: float
+      z:
+        type: number
+        format: float
+    required:
+      - name
+      - x
+      - y
+      - z
+  ExitSkeletonLink:
+    type: object
+    properties:
+      source:
+        type: string
+      target:
+        type: string
+      length:
+        type: number
+        format: integer
+      class:
+        type: string
+    required:
+      - source
+      - target
+  ExitSkeleton:
+    type: object
+    properties:
+      links:
+        type: array
+        items:
+          $ref: "#/definitions/ExitSkeletonLink"
+      nodes:
+        type: array
+        items:
+          $ref: "#/definitions/ExitSkeletonNode"
+  keyframe_id:
+    type: string
+    x-swagger-mongoose:
+      exclude-schema: true
+  keyframe:
+    type: object
+    required:
+      - name
+    properties:
+      animation_id_list:
+        type: array
+        items:
+          x-mongoose:
+            type: objectId
+            includeSwaggerRef: false
+          type: string
+          format: objectId
+      tags:
+        type: array
+        items:
+          type: string
+      skel:
+        $ref: "#/definitions/ExitSkeleton"
+      name:
+        default: "Keyframe"
+        type: string
+  animation_id:
+    type: string
+    x-swagger-mongoose:
+      exclude-schema: true
+  animation:
+    type: object
+    properties:
+      name:
+        default: "Animation"
+        type: string
+      tags:
+        type: array
+        items:
+          type: string
+      keyframes:
+        type: array
+        items:
+          x-mongoose:
+            type: objectId
+          $ref: "#/definitions/keyframe"
+    required:
+      - name
+  SuccessResponse:
+    type: object
+    required:
+      - success
+    properties:
+      success:
+        type: boolean
+  ErrorResponse:
+    type: object
+    required:
+      - message
+    properties:
+      message:
+        type: string

@@ -1,0 +1,4 @@
+excludeInFolderSearch = "{$excludeInFolderSearch,node_modules,swagger-ui}"
+projectDirectory      = "/Users/codelamp/Projects/exit/animator/exit-animator"
+windowTitle           = "$TM_DISPLAYNAME — Exit Animator Server"
+invisiblesMap         = "{$invisiblesMap}~ "

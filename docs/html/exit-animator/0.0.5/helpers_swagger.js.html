@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: helpers/swagger.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+    <h1 class="page-title">Source: helpers/swagger.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>'use strict';
+
+/**
+ * Swagger Helper
+ * 
+ * @module helpers/swagger
+ */
+
+var SwaggerExpress = require('swagger-express-mw');
+var SwaggerMongoose = require('swagger-mongoose');
+var handlers = {};
+
+/**
+ * @namespace
+ * @private
+ */
+var methods = {};
+
+/**
+ * At point of request, set some local vars to make code easier to read.
+ *
+ * This method defines the models, handlers, defs, and swagger local vars.
+ *
+ * @param {express} app - an instance of the express app
+ */
+methods.getLocals = function(app){
+  handlers = app.get('handlers');
+  methods.getLocals = null;
+};
+
+/**
+ * Swagger Handler combines express with swagger and mongoose
+ */
+exports.app = null;
+exports.events = {};
+exports.config = {
+  appRoot: __dirname,
+  port: 8842
+};
+
+/**
+ * On configuration, create a new instance of swaggerHandler
+ */
+exports.configure = function(config){
+  var instance = Object.create(swaggerHandler);
+  instance.config = config;
+  instance.events = {};
+  return instance;
+};
+
+/**
+ * Initialise an instance of swaggerHandler, configure it with event listeners
+ */
+exports.init = function(app, callback){
+  
+  var instance = this;
+      instance.app = app;
+  
+  methods.getLocals &amp;&amp; methods.getLocals(app);
+  
+  if ( !instance.config || !instance.config.appRoot || !instance.config.mongoose ) {
+    console.log('Configuration required!');
+    return;
+  }
+  
+  instance.on('loaded', function(spec){
+    // required to convert some swagger information into mongoose information
+    instance.convertXMongooseToUnderscore(spec.definitions);
+  });
+  
+  // set-up our interface with MongoDB
+  handlers.mongoose
+    .configure({
+      uri: instance.config.mongoose
+    })
+    .init(app, function(err){
+      if ( err ) { return callback(err); }
+      instance.start(function(err){
+        if ( err ) { return callback(err); }
+        callback(null);
+      });
+    })
+  ;
+  
+  return this;
+  
+};
+
+/**
+ * There are certain things that need to be translated between swagger and mongoose
+ */
+exports.convertXMongooseToUnderscore = function(defs){
+  var key, def;
+  for ( key in defs ) {
+    if ( (def=defs[key]) ) {
+      if ( def.properties ) {
+        this.convertXMongooseToUnderscore.stepProperties(def.properties);
+      }
+    }
+  }
+};
+
+/**
+ * Step through each property and apply certain rules if we find x-mongoose as a key
+ */
+exports.convertXMongooseToUnderscore.stepProperties = function(props){
+  var key, prop;
+  for ( key in props ) {
+    if ( (prop=props[key]) ) {
+      if ( prop['x-mongoose'] ) {
+        this.convertXMongooseToUnderscore.convertXMongoose(prop);
+      }
+      if ( prop.items &amp;&amp; prop.items['x-mongoose'] ) {
+        this.convertXMongooseToUnderscore.convertXMongoose(prop.items);
+      }
+    }
+  }
+};
+
+/**
+ * Change the x-mongoose properties to be _, (from memory: meaning swagger ignores them, I think)
+ */
+exports.convertXMongooseToUnderscore.convertXMongoose = function(obj){
+  obj._mongoose = obj['x-mongoose'];
+  delete obj['x-mongoose'];
+};
+
+/**
+ * Start this swaggerHandler
+ */
+exports.start = function(callback){
+  
+  var instance = this;
+  
+  SwaggerExpress.create(instance.config, function(err, swaggerExpress) {
+    if ( err ) {
+      return callback(err);
+    };
+    swaggerExpress.register(instance.app);
+    instance.app.listen(instance.config.port);
+    instance.spec = swaggerExpress.runner.swagger;
+    instance.trigger('loaded', [instance.spec], instance);
+    instance.app.set('swagger', instance.spec);
+    SwaggerMongoose.compileAsync(instance.spec, function(err, swangoose){
+      if ( err ) { return callback(err); };
+      instance.trigger('schemas', [swangoose.schemas], instance);
+      instance.trigger('models', [swangoose.models], instance);
+      callback(null);
+    }, {
+      schema: function(obj, name){instance.trigger('schema', [obj, name], instance);}
+    });
+  });
+  
+};
+
+/**
+ * Register an event listener to this swaggerHandler
+ */
+exports.on = function(name, callback){
+  if ( !this.events[name] ) {
+    this.events[name] = [];
+  }
+  this.events[name].push(callback);
+  return this;
+};
+
+/**
+ * Trigger event listeners attached to this swaggerHandler
+ */
+exports.trigger = function(name, args, context){
+  if ( this.events[name] ) {
+    for ( var a=this.events[name], l=a.length, i=0; i&lt;l; i++ ) {
+      this.events[name][i].apply(context || this, args || []);
+    }
+  }
+  return this;
+};
+
+/**
+ * For each property apply certain handler functions depending on type
+ */
+exports.eachProperty = function(obj, key, def){
+  item = obj[key];
+  if ( this[item.type] ) {
+    this[item.type].apply(null, arguments);
+  }
+  else {
+    this.fallback.apply(null, arguments);
+  }
+};
+
+/**
+ * For items of type array, treat in a certain way
+ */
+exports.array = function(obj, def, swaggerDefs){
+  if ( obj === undefined ) {
+    return def.default || null;
+  }
+  else if ( Array.isArray(obj) ) {
+    obj.forEach(function(subobj, i){
+      if ( def.items.type ) {
+        if ( this[def.items.type] ) {
+          obj[i] = this[def.items.type](subobj, def.items, swaggerDefs);
+        }
+        else {
+          throw new Error('...');
+        }
+      }
+      else if ( def.items['$ref'] ) {
+        var ref = def.items['$ref'].split('/')[2];
+        obj[i] = this.object(subobj, swaggerDefs[ref], swaggerDefs);
+      }
+    });
+    return obj;
+  }
+};
+
+/**
+ * For items of type string, treat in a certain way
+ */
+exports.string = function(obj, def, swaggerDefs){
+  if ( obj === undefined ) {
+    return def.default || null;
+  }
+  return undefined;
+};
+
+/**
+ * For items of type object, treat in a certain way
+ */
+exports.object = function(obj, def, swaggerDefs){
+  if ( obj !== undefined &amp;&amp; obj !== null ) {
+    Object.keys(def.properties).forEach(function(key){
+      var subobj = obj[key], subdef = def.properties[key], resp;
+      if ( !subdef.type ) {
+        // @TODO:
+      }
+      else if ( this[subdef.type] ) {
+        resp = this[subdef.type](subobj, subdef, swaggerDefs);
+        if ( resp !== undefined ) {
+          obj[key] = resp;
+        }
+      }
+      else {
+        console.log('f!', subdef.type, arguments);
+      }
+    });
+  }
+  return obj;
+};
+
+/**
+ * Handler sub references with $ref
+ */
+exports.flattenDefinition = function(def, defs){
+  var flat = {}, prop, nextdef;
+  for ( var key in def.properties ) {
+    prop = def.properties[key];
+    if ( prop['$ref'] ) {
+      nextdef = this.getDefinitionNameFromRef(prop['$ref']);
+      if ( defs[nextdef] ) {
+        flat[key] = this.flattenDefinition(nextdef, defs);
+      }
+    }
+    else if ( prop.items &amp;&amp; prop.items['$ref'] ) {
+      nextdef = this.getDefinitionNameFromRef(prop.items['$ref']);
+      if ( defs[nextdef] ) {
+        flat[key] = [this.flattenDefinition(defs[nextdef], defs)];
+      }
+    }
+    else {
+      flat[key] = prop.type;
+    }
+  }
+  return flat;
+};
+
+/**
+ * Extract the definition name from a $ref
+ */
+exports.getDefinitionNameFromRef = function(ref){
+  return ref.replace(/^\#\/definitions\//, '');
+}
+
+/**
+ * Simple helper to help with cross-origin requests
+ * @todo should be broken off into its own helper
+ *
+ * @namespace
+ */
+var allow = {
+
+  /**
+   * Allow access from a particular origin
+   *
+   * @todo this needs to be configurable
+   *
+   * @memberof allow
+   * @method
+   */
+  origin: function(origin){
+    console.log(origin);
+    switch ( origin ) {
+      case 'http://localhost:8888': return origin; break;
+    }
+    return '';
+  },
+
+  /**
+   * Because the other part of my app is running from a different
+   * port, we need to allow cross-origin requests.
+   *
+   * @memberof allow
+   * @method
+   */
+  CORS: function(req, res, methods){
+    res.header('Access-Control-Allow-Origin', allow.origin(req.get('origin'))); 
+    methods &amp;&amp; res.header('Access-Control-Allow-Methods', methods.join(', '));
+    methods &amp;&amp; res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  },
+
+  /**
+   * Extend controllers with the options HTTP request
+   *
+   * @memberof allow
+   * @method
+   */
+  options: function(methods){
+    return function(req, res, next){
+      allow.CORS(req, res, methods);
+      return res.send(200);
+    };
+  }
+
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-controllers_animation.html">controllers/animation</a></li><li><a href="module-controllers_keyframe.html">controllers/keyframe</a></li><li><a href="module-helpers_mongoose.html">helpers/mongoose</a></li><li><a href="module-helpers_swagger.html">helpers/swagger</a></li></ul><h3>Namespaces</h3><ul><li><a href="has.html">has</a></li><li><a href="is.html">is</a></li><li><a href="module-controllers_animation-methods.html">controllers/animation~methods</a></li><li><a href="module-controllers_keyframe-methods.html">controllers/keyframe~methods</a></li><li><a href="module-helpers_swagger-allow.html">helpers/swagger~allow</a></li><li><a href="module-helpers_swagger-methods.html">helpers/swagger~methods</a></li><li><a href="to.html">to</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.4.3</a> on Mon Jun 19 2017 23:34:12 GMT+0100 (BST)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

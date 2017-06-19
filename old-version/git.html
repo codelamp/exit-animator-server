@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>GIT</title>
+<script type="text/javascript" src="scripts/jquery.js"></script>
+<script>
+
+var ExitGuy = { api: {} };
+
+ExitGuy.api.endpoint = function(path){
+  return 'http://localhost:8080' + path;
+};
+
+ExitGuy.api.extended = function(base){
+  var instance = base.extend(
+      { idAttribute: '_id' },
+      {
+        getByID: function(id){
+          var deferred = jQuery.Deferred();
+          (new this({_id: id})).fetch({
+            success: function(entity, data, xhr){ deferred.resolve(entity); },
+            error: function(){ deferred.reject(arguments); }
+          });
+          return deferred.promise();
+        }
+      }
+    );
+    instance.extend = (function(extend){
+      return function(obj){
+        if ( obj && obj.urlRoot ) { obj.urlRoot = ExitGuy.api.endpoint(obj.urlRoot); }
+        if ( obj && obj.url && obj.url.split ) { obj.url = ExitGuy.api.endpoint(obj.url); }
+        return extend.apply(this, arguments);
+      }
+    })(instance.extend);
+  return instance;
+};
+
+ExitGuy.ModelBase           = ExitGuy.api.extended(Backbone.Model);
+ExitGuy.CollectionBase      = ExitGuy.api.extended(Backbone.Collection);
+ExitGuy.AssociatedModelBase = ExitGuy.api.extended(Backbone.AssociatedModel);
+
+ExitGuy.KeyFrame = ExitGuy.ModelBase.extend({
+  urlRoot: '/api/keyframes',
+  animation: 0,
+  nodes: [],
+  links: [],
+  tags: [],
+  sync: function(method, model, options) {
+    var animation = model.get('animation'), resp;
+    /// before sending to the server, collapse references down to IDs.
+    /// @TODO: Is this best done here? or should the server-side handle it?
+    if ( animation ) {
+      model.attributes.animation = animation.id;
+    }
+    resp = Backbone.sync.apply(this, arguments);
+    if ( animation ) {
+      model.attributes.keyframes = animation;
+    }
+    return resp;
+  },
+});
+
+ExitGuy.KeyFrames = ExitGuy.CollectionBase.extend({
+  urlRoot: '/api/keyframes',
+  model: ExitGuy.KeyFrame
+});
+
+ExitGuy.Animation = ExitGuy.AssociatedModelBase.extend({
+  urlRoot: '/api/animations',
+  relations: [
+    {
+      type: Backbone.Many,
+      key: 'keyframes',
+      collectionType: ExitGuy.KeyFrames,
+      relatedModel: ExitGuy.KeyFrame//,
+      //map: function(type){
+        //console.log(this, arguments);
+      //  return this;
+      //}
+    }
+  ],
+  defaults: {
+    keyframes : []
+  },
+  initialize: function(){
+    this.on('add:keyframes', function () {
+      console.log("Animation added a keyframe");
+    });
+  },
+  /**
+   * Before we save to the server, convert submodels down to simple string
+   * IDs. This is so that Mongoose get's its expected mongoose.Schema.Types.ObjectId
+   * allowing the server to keep its interconnectedness.
+   */
+  sync: function(method, model, options) {
+    var keyframes = model.get('keyframes'),
+        ids = keyframes.map(function(item, i, list){ return item.id; }),
+        resp
+    ;
+    model.attributes.keyframes = ids;
+    resp = Backbone.sync.apply(this, arguments);
+    model.attributes.keyframes = keyframes;
+    return resp;
+  },
+  /**
+   * Once we receive data from the server, convert any simple IDs to objects
+   * with _id property. This is so that Mongoose just has to deal in simple
+   * IDs and Backbone receives the objects it expects to convert into Models.
+   *
+   * There may be a better way to achieve this, but for now I can't find a
+   * way to get Mongoose to play well with { _id: '...' } objects on the server
+   * side.
+   */
+  parse: function(response, options){
+    if ( response.keyframes ) {
+      _.each(response.keyframes, function(item, i, list){
+        if ( item && item.split ) {
+          response.keyframes[i] = { _id: item };
+        }
+      });
+    }
+    return response;
+  },
+  /**
+   * Depending on how an animation has been loaded, we may find that the Model
+   * has not been fully populated. Calling this method makes sure that the data
+   * is fully realised from the server -- including sub models.
+   */
+  populate: function(){
+    var deferred = jQuery.Deferred(), all = [], self = this;
+    this.get('keyframes').each(function(item, i, list){
+      all.push(item.fetch());
+    });
+    jQuery.when.apply(jQuery, all).done(function(){
+      deferred.resolve(self);
+    });
+    return deferred.promise();
+  }
+});
+
+ExitGuy.Animations = ExitGuy.CollectionBase.extend(
+  {
+    url: '/api/animations',
+    model: ExitGuy.Animation
+  },
+  {
+    /**
+     * A static version of populate that allows us to shortcut-load
+     * all the animations available.
+     */
+    populate: function(){
+      var deferred = jQuery.Deferred();
+      (new ExitGuy.Animations()).fetch({
+        success: function(entity, data, xhr){ deferred.resolve(entity); },
+        error: function(){ deferred.reject(arguments); }
+      });
+      return deferred.promise();
+    }
+  }
+);
+
+ExitGuy.Account = ExitGuy.AssociatedModelBase.extend({
+  urlRoot: '/api/account',
+  relations: [
+    {
+      type: Backbone.Many,
+      key: 'animations',
+      collectionType: ExitGuy.Animations,
+      relatedModel: ExitGuy.Animation 
+    }
+  ],
+  defaults: {
+    animations : []
+  }
+});
+
+ExitGuy.Animations.populate().done(function(animations){
+  
+  var animation;
+  
+  function addKeyFrame (animation) {
+    var keyframe = new ExitGuy.KeyFrame();
+        keyframe.set('tags', ['d', 'e', 'f']);
+        keyframe.set('animation', animation);
+        keyframe.save().done(function(){
+          var keyframes = animation.get('keyframes');
+          if ( keyframes ) { keyframes.add(keyframe); }
+          animation.save();
+        });
+  };
+  
+  if ( !animations.length ) {
+    animation = new ExitGuy.Animation();
+    animation.save().done(function(){
+      addKeyFrame(animation);
+    });
+  }
+  else {
+    animation = animations.at(0);
+    if ( animation ) {
+      animation.populate().done(function(animation){
+        addKeyFrame(animation);
+      });
+    }
+  }
+  
+});
+
+      /*
+      ExitGuy.Animation.getByID('565cc555cd54ced24d820d6f').done(function(animation){
+        var keyframe = new ExitGuy.KeyFrame();
+            keyframe.set('tags', ['d', 'e', 'f']);
+            keyframe.set('animation', animation);
+            keyframe.save().done(function(){
+              animation.get('keyframes').add(keyframe);
+              animation.save();
+            });
+      });
+      */
+  
+//    });
+
+//var animation = new ExitGuy.Animation();
+//    animation.save().done(function(){
+      
+      /*
+      ExitGuy.Animation.getByID('565cc555cd54ced24d820d6f').done(function(animation){
+        var keyframe = new ExitGuy.KeyFrame();
+            keyframe.set('tags', ['d', 'e', 'f']);
+            keyframe.set('animation', animation);
+            keyframe.save().done(function(){
+              animation.get('keyframes').add(keyframe);
+              animation.save();
+            });
+      });
+      */
+      
+//    });
+
+/*
+//var account = new ExitGuy.Account();
+var keyframe = new ExitGuy.KeyFrame();
+    keyframe.set('tags', ['a', 'b', 'c']);
+    keyframe.save().done(function(){
+    
+      var animation = new ExitGuy.Animation();
+          animation.get('keyframes').add(keyframe);
+          animation.save().done(function(){
+    
+            keyframe.set('animation', animation);
+            keyframe.save();
+            
+          });
+      
+    });
+//account.get('animations').add(animation);
+*/
+
+//animation.save();
+
+/*
+    kf.save();
+
+var kf = new ExitGuy.KeyFrame();
+    kf.save();
+*/
+
+</script>
+<style>
+
+
+</style>
+</head>
+<body>
+
+</body>
+</html>
